@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS signal_evaluations (
 );
 CREATE INDEX IF NOT EXISTS idx_signal_evaluations_symbol_evaluated_at ON signal_evaluations(symbol, evaluated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_signal_evaluations_passed_evaluated_at ON signal_evaluations(passed, evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signal_evaluations_action_evaluated_at ON signal_evaluations(action, evaluated_at DESC);
 `)
 	return err
 }
@@ -145,10 +146,11 @@ func (s *Store) SaveEvaluation(ctx context.Context, e SignalEvaluation) error {
 	return err
 }
 
-func (s *Store) Evaluations(ctx context.Context, symbol string, limit int) ([]SignalEvaluation, error) {
+func (s *Store) Evaluations(ctx context.Context, symbol, action, passedFilter string, sinceMinutes, limit int) ([]SignalEvaluation, error) {
 	if !s.Enabled() { return []SignalEvaluation{}, nil }
 	if limit <= 0 || limit > 500 { limit = 100 }
-	rows, err := s.db.QueryContext(ctx, `SELECT id, signal_id, symbol, action, horizon_minutes, entry_price, checked_price, move_percent, expected_direction, actual_direction, passed, reason, signal_created_at, evaluated_at FROM signal_evaluations WHERE ($1 = '' OR symbol = $1) ORDER BY evaluated_at DESC LIMIT $2`, symbol, limit)
+	if sinceMinutes <= 0 { sinceMinutes = 1000000000 }
+	rows, err := s.db.QueryContext(ctx, `SELECT id, signal_id, symbol, action, horizon_minutes, entry_price, checked_price, move_percent, expected_direction, actual_direction, passed, reason, signal_created_at, evaluated_at FROM signal_evaluations WHERE ($1 = '' OR symbol = $1) AND ($2 = '' OR action = $2) AND ($3 = '' OR passed = ($3 = 'true')) AND evaluated_at >= now() - make_interval(mins => $4) ORDER BY evaluated_at DESC LIMIT $5`, symbol, action, passedFilter, sinceMinutes, limit)
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]SignalEvaluation,0,limit)
