@@ -1,6 +1,6 @@
 # TrainingAgent
 
-Go microservice system for crypto-market research, news monitoring, Binance public market ingestion, explainable watch signals, and a browser dashboard.
+Go microservice system for crypto-market research, news monitoring, public market-data ingestion, explainable watch signals, and a browser dashboard.
 
 ## Safety model
 
@@ -11,21 +11,21 @@ This project does not place trades and does not provide guaranteed financial adv
 - `HOLD_WATCH` means mixed evidence.
 - `AVOID_WATCH` means risk is high or evidence is weak.
 
-## Services
+## Current services
 
 | Service | Port | Purpose |
 |---|---:|---|
-| `news-ingestor` | 8081 | Reads crypto/news RSS feeds and assigns basic keyword sentiment. |
-| `binance-ingestor` | 8082 | Reads Binance public 24h ticker data and ranks markets. |
-| `signal-engine` | 8083 | Combines market data, news sentiment, and risk into explainable watch signals. |
+| `news` | 8081 | Reads RSS feeds from `NEWS_FEEDS`, filters by query, and assigns keyword sentiment. |
+| `market` | 8082 | Reads public 24h ticker market data and ranks markets by quote volume. |
+| `engine` | 8083 | Combines market data, news sentiment, and risk into explainable watch signals. |
 | `api-gateway` | 8080 | Public API and embedded dashboard website. |
 
-## Run
+## Run with Docker
+
+Use the new `compose.yaml` file:
 
 ```bash
-make test
-make build
-docker compose up --build
+docker compose -f compose.yaml up --build
 ```
 
 Open:
@@ -39,6 +39,38 @@ API:
 ```bash
 curl "http://localhost:8080/v1/signals?quote=USDT&limit=20"
 ```
+
+## Run locally without Docker
+
+Use 4 terminal windows:
+
+```bash
+go run ./cmd/news
+```
+
+```bash
+go run ./cmd/market
+```
+
+```bash
+MARKET_SERVICE_URL=http://localhost:8082 NEWS_SERVICE_URL=http://localhost:8081 go run ./cmd/engine
+```
+
+```bash
+ENGINE_SERVICE_URL=http://localhost:8083 go run ./cmd/api-gateway
+```
+
+## News feeds
+
+`news` reads comma-separated RSS feed URLs from `NEWS_FEEDS`.
+
+Example:
+
+```bash
+NEWS_FEEDS="https://cointelegraph.com/rss,https://decrypt.co/feed" go run ./cmd/news
+```
+
+If feeds are unavailable, the service returns a small fallback dataset so the dashboard continues working.
 
 ## Dashboard
 
