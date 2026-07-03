@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"io"
 	"net/http"
 	"strings"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/NursultanKoshoev11/TrainingAgent/internal/platform"
 )
+
+//go:embed web/dashboard_ru.html
+var dashboardHTML string
 
 var signalCache = struct {
 	sync.Mutex
@@ -126,7 +130,5 @@ func writeSignalCache(query string, body []byte, status int) {
 
 func dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, page)
+	_, _ = io.WriteString(w, dashboardHTML)
 }
-
-const page = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TrainingAgent Dashboard</title><style>body{font-family:Arial;background:#0b1020;color:#edf3ff;margin:0}.wrap{max-width:1200px;margin:auto;padding:24px}.card{background:#121a2f;border:1px solid #24304b;border-radius:16px;padding:16px;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.metric{background:#0f172a;border:1px solid #24304b;border-radius:14px;padding:12px}button,select,input{padding:10px;border-radius:10px;border:1px solid #33415f;background:#17213a;color:#fff}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #24304b;text-align:left}.BUY_WATCH{color:#4ade80}.SELL_WATCH{color:#fb7185}.HOLD_WATCH{color:#facc15}.AVOID_WATCH{color:#f97316}.ok{color:#4ade80}.bad{color:#fb7185}pre{white-space:pre-wrap}</style></head><body><div class="wrap"><h1>TrainingAgent Crypto Research Dashboard</h1><p>Research/watch signals only. Not financial advice and not auto-trading.</p><div class="card"><select id="quote"><option>USDT</option><option>BTC</option><option>ETH</option></select> <input id="limit" value="20" type="number" min="1" max="100"> <select id="filter"><option value="">All labels</option><option>BUY_WATCH</option><option>SELL_WATCH</option><option>HOLD_WATCH</option><option>AVOID_WATCH</option></select> <select id="interval"><option value="300000">5 min</option><option value="600000">10 min</option><option value="60000">1 min test</option></select> <button onclick="loadNow()">Refresh</button> <button onclick="loadHistory()">History</button> <button onclick="loadCandles()">Candles</button> <span id="status"></span></div><div class="grid"><div class="metric">Engine: <b id="engine">checking</b></div><div class="metric">Market: <b id="market">checking</b></div><div class="metric">Signals: <b id="mTotal">0</b></div><div class="metric">High risk: <b id="mRisk">0</b></div></div><div class="card"><table><thead><tr><th>Symbol</th><th>Label</th><th>Score</th><th>Expected move</th><th>Risk</th><th>Confidence</th><th>24h</th></tr></thead><tbody id="rows"></tbody></table></div><div class="card"><h2>Details / History / Candles</h2><pre id="details">Select a row</pre></div></div><script>let timer,last=[];async function loadStatus(){try{let r=await fetch('/v1/status',{cache:'no-store'});let d=await r.json();engine.textContent=d.engine_ok?'OK':'DOWN';engine.className=d.engine_ok?'ok':'bad';market.textContent=d.market_ok?'OK':'DOWN';market.className=d.market_ok?'ok':'bad'}catch(e){engine.textContent='DOWN';market.textContent='DOWN';engine.className='bad';market.className='bad'}}function render(){let f=filter.value;let data=f?last.filter(x=>x.action===f):last;rows.innerHTML='';let high=0;data.forEach(s=>{if(s.risk_score>=0.7)high++;let tr=document.createElement('tr');tr.innerHTML='<td>'+s.symbol+'</td><td class="'+s.action+'">'+s.action+'</td><td>'+Math.round(s.probability*100)+'%</td><td>'+s.expected_move_percent+'%</td><td>'+Math.round(s.risk_score*100)+'%</td><td>'+Math.round(s.confidence*100)+'%</td><td>'+s.market.price_change_percent+'%</td>';tr.onclick=()=>details.textContent=JSON.stringify(s,null,2);rows.appendChild(tr)});mTotal.textContent=data.length;mRisk.textContent=high}async function loadNow(){status.textContent='loading...';await loadStatus();let q=quote.value,l=limit.value;try{let r=await fetch('/v1/signals?quote='+q+'&limit='+l,{cache:'no-store'});let d=await r.json();last=d.signals||[];render();status.textContent='updated '+new Date().toLocaleTimeString()}catch(e){status.textContent='load failed'}}async function loadHistory(){let r=await fetch('/v1/signals/history?limit=30',{cache:'no-store'});details.textContent=JSON.stringify(await r.json(),null,2)}async function loadCandles(){let symbol=(last[0]&&last[0].symbol)||'BTCUSDT';let r=await fetch('/v1/candles?symbol='+symbol+'&interval=5m&limit=50',{cache:'no-store'});details.textContent=JSON.stringify(await r.json(),null,2)}function reset(){clearInterval(timer);timer=setInterval(loadNow,Number(interval.value));loadNow()}filter.onchange=render;interval.onchange=reset;reset()</script></body></html>`
