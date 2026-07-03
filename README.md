@@ -18,11 +18,17 @@ This project does not place trades and does not provide guaranteed financial adv
 | `news` | 8081 | Reads RSS feeds from `NEWS_FEEDS`, filters by query, and assigns keyword sentiment. |
 | `market` | 8082 | Reads public 24h ticker market data and ranks markets by quote volume. |
 | `engine` | 8083 | Combines market data, news sentiment, and risk into explainable watch signals. |
-| `api-gateway` | 8080 | Public API and embedded dashboard website. |
+| `api-gateway` | 8080 | Public API, cached signal proxy, backend status endpoint, and embedded dashboard website. |
 
 ## Run with Docker
 
-Use the new `compose.yaml` file:
+Both `compose.yaml` and `docker-compose.yml` use the same current service layout.
+
+```bash
+docker compose up --build
+```
+
+Or explicitly:
 
 ```bash
 docker compose -f compose.yaml up --build
@@ -38,6 +44,12 @@ API:
 
 ```bash
 curl "http://localhost:8080/v1/signals?quote=USDT&limit=20"
+```
+
+Status:
+
+```bash
+curl "http://localhost:8080/v1/status"
 ```
 
 ## Run locally without Docker
@@ -57,7 +69,7 @@ MARKET_SERVICE_URL=http://localhost:8082 NEWS_SERVICE_URL=http://localhost:8081 
 ```
 
 ```bash
-ENGINE_SERVICE_URL=http://localhost:8083 go run ./cmd/api-gateway
+ENGINE_SERVICE_URL=http://localhost:8083 SIGNAL_CACHE_SECONDS=60 go run ./cmd/api-gateway
 ```
 
 ## News feeds
@@ -74,7 +86,11 @@ If feeds are unavailable, the service returns a small fallback dataset so the da
 
 ## Dashboard
 
-The dashboard auto-refreshes every 5 minutes by default. You can switch it to 10 minutes or 1 minute for local testing. It shows signal label, probability, expected move estimate, risk, confidence, market context, related news, and explanations.
+The dashboard auto-refreshes every 5 minutes by default. You can switch it to 10 minutes or 1 minute for local testing. It shows signal label, score, expected move estimate, risk, confidence, market context, related news, explanations, backend status, and simple summary metrics.
+
+## Gateway cache
+
+`api-gateway` caches successful `/v1/signals` responses for `SIGNAL_CACHE_SECONDS` seconds. Default: `60`. This keeps the dashboard responsive and reduces unnecessary requests to the engine.
 
 ## Roadmap
 
