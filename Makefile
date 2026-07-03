@@ -1,19 +1,18 @@
 SHELL := /bin/sh
-SERVICES := news-ingestor binance-ingestor signal-engine api-gateway
 
-.PHONY: test build docker-up docker-down
+.PHONY: test build run-compose stop-compose
 
 test:
 	go test ./...
 
 build:
-	mkdir -p bin
-	for svc in $(SERVICES); do \
-		go build -o bin/$$svc ./cmd/$$svc; \
-	done
+	go build ./cmd/news
+	go build ./cmd/market
+	go build ./cmd/engine
+	go build ./cmd/api-gateway
 
-docker-up:
-	docker compose up --build
+run-compose:
+	docker compose -f compose.yaml up --build
 
-docker-down:
-	docker compose down
+stop-compose:
+	docker compose -f compose.yaml down
