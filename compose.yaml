@@ -73,6 +73,30 @@ services:
       timeout: 5s
       retries: 3
 
+  evaluator:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: evaluator
+    environment:
+      PORT: "8084"
+      DATABASE_URL: "postgres://trainingagent:trainingagent@postgres:5432/trainingagent?sslmode=disable"
+      MARKET_SERVICE_URL: "http://market:8082"
+      EVALUATION_HORIZON_MINUTES: "20"
+      EVALUATOR_CHECK_INTERVAL_SECONDS: "60"
+      EVALUATOR_BATCH_SIZE: "200"
+    ports:
+      - "8084:8084"
+    depends_on:
+      - postgres
+      - market
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   api-gateway:
     build:
       context: .
@@ -83,11 +107,13 @@ services:
       PORT: "8080"
       ENGINE_SERVICE_URL: "http://engine:8083"
       MARKET_SERVICE_URL: "http://market:8082"
+      EVALUATOR_SERVICE_URL: "http://evaluator:8084"
       SIGNAL_CACHE_SECONDS: "60"
     ports:
       - "8080:8080"
     depends_on:
       - engine
+      - evaluator
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
       interval: 30s
