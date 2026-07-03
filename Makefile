@@ -9,6 +9,7 @@ build:
 	go build ./cmd/news
 	go build ./cmd/market
 	go build ./cmd/engine
+	go build ./cmd/evaluator
 	go build ./cmd/api-gateway
 
 run-compose:
