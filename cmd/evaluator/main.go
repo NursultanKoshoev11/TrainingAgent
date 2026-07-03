@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -120,5 +119,3 @@ func expectedDirection(action string) string {
 }
 func actualDirection(move float64) string { if move > 0.2 { return "up" }; if move < -0.2 { return "down" }; return "flat" }
 func abs(x float64) float64 { if x < 0 { return -x }; return x }
-
-func _keepJSONImport(_ json.RawMessage) {}
