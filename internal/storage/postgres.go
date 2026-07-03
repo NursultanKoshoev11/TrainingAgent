@@ -34,20 +34,21 @@ type PendingEvaluation struct {
 }
 
 type SignalEvaluation struct {
-	ID                int64     `json:"id"`
-	SignalID          int64     `json:"signal_id"`
-	Symbol            string    `json:"symbol"`
-	Action            string    `json:"action"`
-	HorizonMinutes    int       `json:"horizon_minutes"`
-	EntryPrice        float64   `json:"entry_price"`
-	CheckedPrice      float64   `json:"checked_price"`
-	MovePercent       float64   `json:"move_percent"`
-	ExpectedDirection string    `json:"expected_direction"`
-	ActualDirection   string    `json:"actual_direction"`
-	Passed            bool      `json:"passed"`
-	Reason            string    `json:"reason"`
-	SignalCreatedAt   time.Time `json:"signal_created_at"`
-	EvaluatedAt        time.Time `json:"evaluated_at"`
+	ID                int64           `json:"id"`
+	SignalID          int64           `json:"signal_id"`
+	Symbol            string          `json:"symbol"`
+	Action            string          `json:"action"`
+	HorizonMinutes    int             `json:"horizon_minutes"`
+	EntryPrice        float64         `json:"entry_price"`
+	CheckedPrice      float64         `json:"checked_price"`
+	MovePercent       float64         `json:"move_percent"`
+	ExpectedDirection string          `json:"expected_direction"`
+	ActualDirection   string          `json:"actual_direction"`
+	Passed            bool            `json:"passed"`
+	Reason            string          `json:"reason"`
+	Signal            json.RawMessage `json:"signal"`
+	SignalCreatedAt   time.Time       `json:"signal_created_at"`
+	EvaluatedAt        time.Time       `json:"evaluated_at"`
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
@@ -150,10 +151,10 @@ func (s *Store) Evaluations(ctx context.Context, symbol, action, passedFilter st
 	if !s.Enabled() { return []SignalEvaluation{}, nil }
 	if limit <= 0 || limit > 500 { limit = 100 }
 	if sinceMinutes <= 0 { sinceMinutes = 1000000000 }
-	rows, err := s.db.QueryContext(ctx, `SELECT id, signal_id, symbol, action, horizon_minutes, entry_price, checked_price, move_percent, expected_direction, actual_direction, passed, reason, signal_created_at, evaluated_at FROM signal_evaluations WHERE ($1 = '' OR symbol = $1) AND ($2 = '' OR action = $2) AND ($3 = '' OR passed = ($3 = 'true')) AND evaluated_at >= now() - make_interval(mins => $4) ORDER BY evaluated_at DESC LIMIT $5`, symbol, action, passedFilter, sinceMinutes, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT e.id, e.signal_id, e.symbol, e.action, e.horizon_minutes, e.entry_price, e.checked_price, e.move_percent, e.expected_direction, e.actual_direction, e.passed, e.reason, h.signal, e.signal_created_at, e.evaluated_at FROM signal_evaluations e JOIN signal_history h ON h.id = e.signal_id WHERE ($1 = '' OR e.symbol = $1) AND ($2 = '' OR e.action = $2) AND ($3 = '' OR e.passed = ($3 = 'true')) AND e.evaluated_at >= now() - make_interval(mins => $4) ORDER BY e.evaluated_at DESC LIMIT $5`, symbol, action, passedFilter, sinceMinutes, limit)
 	if err != nil { return nil, err }
 	defer rows.Close()
 	items := make([]SignalEvaluation,0,limit)
-	for rows.Next(){ var e SignalEvaluation; if err := rows.Scan(&e.ID,&e.SignalID,&e.Symbol,&e.Action,&e.HorizonMinutes,&e.EntryPrice,&e.CheckedPrice,&e.MovePercent,&e.ExpectedDirection,&e.ActualDirection,&e.Passed,&e.Reason,&e.SignalCreatedAt,&e.EvaluatedAt); err != nil { return nil, err }; items=append(items,e) }
+	for rows.Next(){ var e SignalEvaluation; if err := rows.Scan(&e.ID,&e.SignalID,&e.Symbol,&e.Action,&e.HorizonMinutes,&e.EntryPrice,&e.CheckedPrice,&e.MovePercent,&e.ExpectedDirection,&e.ActualDirection,&e.Passed,&e.Reason,&e.Signal,&e.SignalCreatedAt,&e.EvaluatedAt); err != nil { return nil, err }; items=append(items,e) }
 	return items, rows.Err()
 }
