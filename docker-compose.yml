@@ -10,6 +10,11 @@ services:
       NEWS_FEEDS: "https://cointelegraph.com/rss,https://decrypt.co/feed"
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   market:
     build:
@@ -22,6 +27,11 @@ services:
       BINANCE_API_BASE: "https://api.binance.com"
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   engine:
     build:
@@ -39,6 +49,11 @@ services:
     depends_on:
       - news
       - market
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   api-gateway:
     build:
@@ -49,7 +64,13 @@ services:
     environment:
       PORT: "8080"
       ENGINE_SERVICE_URL: "http://engine:8083"
+      SIGNAL_CACHE_SECONDS: "60"
     ports:
       - "8080:8080"
     depends_on:
       - engine
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
