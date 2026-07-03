@@ -37,10 +37,7 @@ func (a *app) loop() {
 	if interval < 10*time.Second { interval = 10*time.Second }
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for {
-		a.evaluateOnce(context.Background())
-		<-ticker.C
-	}
+	for { a.evaluateOnce(context.Background()); <-ticker.C }
 }
 
 func (a *app) runHandler(w http.ResponseWriter, r *http.Request) {
@@ -51,13 +48,17 @@ func (a *app) runHandler(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) listHandler(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit")); if limit <= 0 { limit = 100 }
-	items, err := a.store.Evaluations(r.Context(), strings.ToUpper(r.URL.Query().Get("symbol")), limit)
+	since, _ := strconv.Atoi(r.URL.Query().Get("since_minutes"))
+	symbol := strings.ToUpper(r.URL.Query().Get("symbol"))
+	action := r.URL.Query().Get("action")
+	passedFilter := r.URL.Query().Get("passed")
+	items, err := a.store.Evaluations(r.Context(), symbol, action, passedFilter, since, limit)
 	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
 	passed := 0
 	for _, item := range items { if item.Passed { passed++ } }
 	accuracy := 0.0
 	if len(items) > 0 { accuracy = float64(passed) / float64(len(items)) }
-	platform.JSON(w, http.StatusOK, map[string]any{"count": len(items), "passed": passed, "accuracy": accuracy, "items": items})
+	platform.JSON(w, http.StatusOK, map[string]any{"count": len(items), "passed": passed, "accuracy": accuracy, "filters": map[string]any{"symbol": symbol, "action": action, "passed": passedFilter, "since_minutes": since}, "items": items})
 }
 
 func (a *app) evaluateOnce(ctx context.Context) (int, error) {
@@ -96,26 +97,15 @@ func evaluate(item storage.PendingEvaluation, checkedPrice float64, horizon int)
 	passed := false
 	reason := ""
 	switch item.Action {
-	case "BUY_WATCH":
-		passed = move > 0
-		reason = fmt.Sprintf("Ожидали рост. Через %d минут движение: %.2f%%.", horizon, move)
-	case "SELL_WATCH":
-		passed = move < 0
-		reason = fmt.Sprintf("Ожидали снижение/слабость. Через %d минут движение: %.2f%%.", horizon, move)
-	case "HOLD_WATCH":
-		passed = move > -0.5 && move < 0.5
-		reason = fmt.Sprintf("Ожидали боковое движение. Через %d минут движение: %.2f%%.", horizon, move)
-	case "AVOID_WATCH":
-		passed = abs(move) > 1.0
-		reason = fmt.Sprintf("Ожидали повышенный риск. Через %d минут движение: %.2f%%.", horizon, move)
-	default:
-		reason = fmt.Sprintf("Нейтральная проверка. Через %d минут движение: %.2f%%.", horizon, move)
+	case "BUY_WATCH": passed = move > 0; reason = fmt.Sprintf("Ожидали рост. Через %d минут движение: %.2f%%.", horizon, move)
+	case "SELL_WATCH": passed = move < 0; reason = fmt.Sprintf("Ожидали снижение/слабость. Через %d минут движение: %.2f%%.", horizon, move)
+	case "HOLD_WATCH": passed = move > -0.5 && move < 0.5; reason = fmt.Sprintf("Ожидали боковое движение. Через %d минут движение: %.2f%%.", horizon, move)
+	case "AVOID_WATCH": passed = abs(move) > 1.0; reason = fmt.Sprintf("Ожидали повышенный риск. Через %d минут движение: %.2f%%.", horizon, move)
+	default: reason = fmt.Sprintf("Нейтральная проверка. Через %d минут движение: %.2f%%.", horizon, move)
 	}
 	return storage.SignalEvaluation{SignalID:item.SignalID, Symbol:item.Symbol, Action:item.Action, HorizonMinutes:horizon, EntryPrice:item.EntryPrice, CheckedPrice:checkedPrice, MovePercent:move, ExpectedDirection:expected, ActualDirection:actual, Passed:passed, Reason:reason, SignalCreatedAt:item.CreatedAt}
 }
 
-func expectedDirection(action string) string {
-	switch action { case "BUY_WATCH": return "up"; case "SELL_WATCH": return "down"; case "HOLD_WATCH": return "flat"; case "AVOID_WATCH": return "volatile"; default: return "unknown" }
-}
+func expectedDirection(action string) string { switch action { case "BUY_WATCH": return "up"; case "SELL_WATCH": return "down"; case "HOLD_WATCH": return "flat"; case "AVOID_WATCH": return "volatile"; default: return "unknown" } }
 func actualDirection(move float64) string { if move > 0.2 { return "up" }; if move < -0.2 { return "down" }; return "flat" }
 func abs(x float64) float64 { if x < 0 { return -x }; return x }
