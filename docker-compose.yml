@@ -1,0 +1,55 @@
+services:
+  news-ingestor:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: news-ingestor
+    environment:
+      PORT: "8081"
+    ports:
+      - "8081:8081"
+
+  binance-ingestor:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: binance-ingestor
+    environment:
+      PORT: "8082"
+      BINANCE_API_BASE: "https://api.binance.com"
+      BINANCE_QUOTE_ASSET: "USDT"
+    ports:
+      - "8082:8082"
+
+  signal-engine:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: signal-engine
+    environment:
+      PORT: "8083"
+      NEWS_SERVICE_URL: "http://news-ingestor:8081"
+      BINANCE_SERVICE_URL: "http://binance-ingestor:8082"
+      SIGNAL_MIN_PROBABILITY: "0.58"
+    ports:
+      - "8083:8083"
+    depends_on:
+      - news-ingestor
+      - binance-ingestor
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: api-gateway
+    environment:
+      PORT: "8080"
+      SIGNAL_ENGINE_URL: "http://signal-engine:8083"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - signal-engine
