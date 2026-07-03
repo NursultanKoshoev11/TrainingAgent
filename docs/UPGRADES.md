@@ -4,13 +4,14 @@ This document describes the larger MVP upgrades added after the initial dashboar
 
 ## Added capabilities
 
+- Spot-only market analysis. Futures, leverage, and margin scenarios are out of scope.
 - PostgreSQL-backed signal history.
 - Automatic signal evaluation after a configurable horizon, default 20 minutes.
+- Filterable evaluation results by time window, result, action type, and symbol.
 - Optional storage: if `DATABASE_URL` is empty, the system still runs, but history and evaluations are disabled.
-- Market candles endpoint for OHLCV data.
+- Market candles endpoint for OHLCV spot data.
 - Gateway routes for signals, signal history, signal evaluations, candles, and status.
 - Optional Basic Auth for the dashboard and API gateway.
-- Shared retry helper for future external calls.
 
 ## Docker stack
 
@@ -37,7 +38,7 @@ http://localhost:8080/
 
 ## API endpoints
 
-Signals:
+Spot signals:
 
 ```bash
 curl "http://localhost:8080/v1/signals?quote=USDT&limit=20"
@@ -55,13 +56,19 @@ Signal evaluations:
 curl "http://localhost:8080/v1/evaluations?limit=50"
 ```
 
+Evaluation filters:
+
+```bash
+curl "http://localhost:8080/v1/evaluations?since_minutes=60&passed=true&action=BUY_WATCH&limit=50"
+```
+
 Manual evaluation run:
 
 ```bash
 curl -X POST "http://localhost:8080/v1/evaluations/run"
 ```
 
-Candles:
+Spot candles:
 
 ```bash
 curl "http://localhost:8080/v1/candles?symbol=BTCUSDT&interval=5m&limit=100"
@@ -72,6 +79,21 @@ Status:
 ```bash
 curl "http://localhost:8080/v1/status"
 ```
+
+## Dashboard behavior
+
+The Russian dashboard is spot-only and shows signal details inline under the selected card. This avoids scrolling back to the top after clicking an item lower in the list.
+
+Evaluation filters in the dashboard:
+
+- Last 20 minutes.
+- Last 1 hour.
+- Last 6 hours.
+- Last 24 hours.
+- All time.
+- Passed only.
+- Failed only.
+- Filter by action type.
 
 ## Evaluation logic
 
@@ -108,7 +130,7 @@ The app creates the `signal_history` and `signal_evaluations` tables automatical
 ## Next major items
 
 - Backtesting service over longer historical windows.
-- Technical indicators from candles.
+- Technical indicators from spot candles.
 - Better news classifier and symbol extraction.
 - Full status page with last successful fetch timestamps.
 - Structured logs and request IDs.
