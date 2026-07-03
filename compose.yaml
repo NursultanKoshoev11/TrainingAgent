@@ -1,0 +1,55 @@
+services:
+  news:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: news
+    environment:
+      PORT: "8081"
+      NEWS_FEEDS: "https://cointelegraph.com/rss,https://decrypt.co/feed"
+    ports:
+      - "8081:8081"
+
+  market:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: market
+    environment:
+      PORT: "8082"
+      BINANCE_API_BASE: "https://api.binance.com"
+    ports:
+      - "8082:8082"
+
+  engine:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: engine
+    environment:
+      PORT: "8083"
+      NEWS_SERVICE_URL: "http://news:8081"
+      MARKET_SERVICE_URL: "http://market:8082"
+      SIGNAL_MIN_PROBABILITY: "0.58"
+    ports:
+      - "8083:8083"
+    depends_on:
+      - news
+      - market
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      args:
+        SERVICE: api-gateway
+    environment:
+      PORT: "8080"
+      ENGINE_SERVICE_URL: "http://engine:8083"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - engine
