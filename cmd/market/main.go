@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/NursultanKoshoev11/TrainingAgent/internal/analysis"
 	"github.com/NursultanKoshoev11/TrainingAgent/internal/domain"
 	"github.com/NursultanKoshoev11/TrainingAgent/internal/platform"
 )
@@ -32,6 +33,7 @@ func main() {
 	mux.HandleFunc("/healthz", platform.Method(http.MethodGet, platform.HealthHandler("market")))
 	mux.HandleFunc("/v1/tickers", platform.Method(http.MethodGet, handleTickers))
 	mux.HandleFunc("/v1/candles", platform.Method(http.MethodGet, handleCandles))
+	mux.HandleFunc("/v1/tech", platform.Method(http.MethodGet, handleTech))
 	_ = platform.StartServer("market", port, mux)
 }
 
@@ -55,6 +57,49 @@ func handleCandles(w http.ResponseWriter, r *http.Request) {
 	candles, err := loadCandles(symbol, interval, limit)
 	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
 	platform.JSON(w, http.StatusOK, domain.CandleResponse{Symbol: symbol, Interval: interval, Count: len(candles), Candles: candles})
+}
+
+func handleTech(w http.ResponseWriter, r *http.Request) {
+	symbol := strings.ToUpper(r.URL.Query().Get("symbol"))
+	if symbol == "" { symbol = "BTCUSDT" }
+	tech, err := buildTech(symbol)
+	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
+	platform.JSON(w, http.StatusOK, domain.TechResponse{Symbol: symbol, MarketType: "spot", Tech: tech})
+}
+
+func buildTech(symbol string) (domain.TechSnapshot, error) {
+	intervals := []string{"5m", "15m", "1h", "4h"}
+	out := domain.TechSnapshot{Symbol: symbol, MarketType: "spot", Intervals: intervals}
+	var trendTotal, momentumTotal, volumeTotal, volTotal float64
+	var confirmations, warnings []string
+	for _, interval := range intervals {
+		candles, err := loadCandles(symbol, interval, 80)
+		if err != nil { warnings = append(warnings, "нет свечей для "+interval); continue }
+		closes := analysis.CloseValues(candles)
+		ema20 := analysis.EMA(closes, 20)
+		ema50 := analysis.EMA(closes, 50)
+		rsi := analysis.RSI(closes, 14)
+		trend := analysis.TrendScoreFromEMA(ema20, ema50, closes[len(closes)-1])
+		mom := analysis.MomentumScore(candles)
+		volSpike := analysis.VolumeSpikeScore(candles)
+		vol := analysis.VolatilityPercent(candles)
+		trendTotal += trend; momentumTotal += mom; volumeTotal += volSpike; volTotal += vol
+		if interval == "1h" { out.RSI = rsi; out.EMA20 = ema20; out.EMA50 = ema50 }
+		if trend > 0.25 { confirmations = append(confirmations, interval+": тренд выше EMA") }
+		if trend < -0.25 { warnings = append(warnings, interval+": тренд слабый") }
+		if rsi > 75 { warnings = append(warnings, interval+": RSI перегрет") }
+		if rsi < 30 { warnings = append(warnings, interval+": RSI перепродан") }
+		if vol > 3.5 { warnings = append(warnings, interval+": высокая волатильность") }
+	}
+	checked := float64(len(intervals))
+	out.TrendScore = analysis.Clamp(trendTotal/checked, -1, 1)
+	out.MomentumScore = analysis.Clamp(momentumTotal/checked, -1, 1)
+	out.VolumeScore = analysis.Clamp(volumeTotal/checked, 0, 1)
+	out.Volatility = volTotal/checked
+	out.QualityScore = analysis.Clamp(0.45+out.TrendScore*0.25+out.MomentumScore*0.15+out.VolumeScore*0.10-analysis.Clamp(out.Volatility/10,0,0.25), 0, 1)
+	out.Confirmations = confirmations
+	out.Warnings = warnings
+	return out, nil
 }
 
 func load(quote string, limit int) ([]domain.Ticker, error) {
@@ -88,10 +133,7 @@ func loadCandles(symbol, interval string, limit int) ([]domain.Candle, error) {
 	var raw [][]any
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil { return nil, err }
 	out := make([]domain.Candle, 0, len(raw))
-	for _, row := range raw {
-		if len(row) < 7 { continue }
-		out = append(out, domain.Candle{Symbol:symbol,Interval:interval,OpenTime:msTime(row[0]),Open:numAny(row[1]),High:numAny(row[2]),Low:numAny(row[3]),Close:numAny(row[4]),Volume:numAny(row[5]),CloseTime:msTime(row[6])})
-	}
+	for _, row := range raw { if len(row) >= 7 { out = append(out, domain.Candle{Symbol:symbol,Interval:interval,OpenTime:msTime(row[0]),Open:numAny(row[1]),High:numAny(row[2]),Low:numAny(row[3]),Close:numAny(row[4]),Volume:numAny(row[5]),CloseTime:msTime(row[6])}) } }
 	return out, nil
 }
 
