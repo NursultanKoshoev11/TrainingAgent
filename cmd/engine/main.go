@@ -20,10 +20,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	opened, err := storage.Open(ctx, platform.GetEnv("DATABASE_URL", ""))
-	if err == nil {
-		store = opened
-		defer store.Close()
-	}
+	if err == nil { store = opened; defer store.Close() }
 	port := platform.GetEnv("PORT", "8083")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", platform.Method(http.MethodGet, platform.HealthHandler("engine")))
@@ -33,33 +30,24 @@ func main() {
 }
 
 func handleSignals(w http.ResponseWriter, r *http.Request) {
-	quote := strings.ToUpper(r.URL.Query().Get("quote"))
-	if quote == "" { quote = "USDT" }
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 { limit = 20 }
-	query := r.URL.Query().Get("query")
-	if query == "" { query = "crypto bitcoin ethereum binance" }
-	items := analysis.BuildSignals(getTickers(quote, limit), getNews(query, limit), quote, limit, analysis.ScoreConfig{MinimumProbability: platform.GetEnvFloat("SIGNAL_MIN_PROBABILITY", 0.58)})
-	if store != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		_ = store.SaveSignals(ctx, items)
-		cancel()
-	}
+	quote := strings.ToUpper(r.URL.Query().Get("quote")); if quote == "" { quote = "USDT" }
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit")); if limit <= 0 { limit = 20 }
+	query := r.URL.Query().Get("query"); if query == "" { query = "crypto market" }
+	tickers := getTickers(quote, limit)
+	news := getNews(query, limit)
+	quality := loadQuality(tickers)
+	items := analysis.BuildGuardedSignals(tickers, news, quality, quote, limit, analysis.ScoreConfig{MinimumProbability: platform.GetEnvFloat("SIGNAL_MIN_PROBABILITY", 0.58)})
+	if store != nil { ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second); _ = store.SaveSignals(ctx, items); cancel() }
 	platform.JSON(w, http.StatusOK, domain.SignalResponse{QuoteAsset: quote, Count: len(items), Signals: items})
 }
 
 func handleHistory(w http.ResponseWriter, r *http.Request) {
-	if store == nil || !store.Enabled() {
-		platform.JSON(w, http.StatusOK, map[string]any{"count": 0, "items": []storage.SignalHistoryItem{}, "storage_enabled": false})
-		return
-	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	if limit <= 0 { limit = 100 }
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
+	if store == nil || !store.Enabled() { platform.JSON(w, http.StatusOK, map[string]any{"count":0,"items":[]storage.SignalHistoryItem{},"storage_enabled":false}); return }
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit")); if limit <= 0 { limit = 100 }
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second); defer cancel()
 	items, err := store.SignalHistory(ctx, strings.ToUpper(r.URL.Query().Get("symbol")), r.URL.Query().Get("action"), limit)
 	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
-	platform.JSON(w, http.StatusOK, map[string]any{"count": len(items), "items": items, "storage_enabled": true})
+	platform.JSON(w, http.StatusOK, map[string]any{"count":len(items),"items":items,"storage_enabled":true})
 }
 
 func getTickers(quote string, limit int) []domain.Ticker {
@@ -67,10 +55,8 @@ func getTickers(quote string, limit int) []domain.Ticker {
 	u, _ := url.Parse(base + "/v1/tickers")
 	q := u.Query(); q.Set("quote", quote); q.Set("limit", strconv.Itoa(limit)); u.RawQuery = q.Encode()
 	var response domain.TickerResponse
-	client := &http.Client{Timeout: 15 * time.Second}
-	if err := platform.GetJSON(client, u.String(), &response); err != nil {
-		return []domain.Ticker{{Symbol:"BTC"+quote,LastPrice:100,OpenPrice:95,HighPrice:105,LowPrice:94,PriceChangePercent:5.5,QuoteVolume:1000000,VolumeRankScore:1}}
-	}
+	client := &http.Client{Timeout: 15*time.Second}
+	if err := platform.GetJSON(client, u.String(), &response); err != nil { return nil }
 	return response.Tickers
 }
 
@@ -79,7 +65,7 @@ func getNews(query string, limit int) []domain.NewsArticle {
 	u, _ := url.Parse(base + "/v1/news")
 	q := u.Query(); q.Set("query", query); q.Set("limit", strconv.Itoa(limit)); u.RawQuery = q.Encode()
 	var response domain.NewsResponse
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 15*time.Second}
 	if err := platform.GetJSON(client, u.String(), &response); err != nil { return nil }
 	return response.Articles
 }
