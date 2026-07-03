@@ -23,7 +23,7 @@ func BuildSignals(tickers []domain.Ticker, articles []domain.NewsArticle, quote 
 		expected := Clamp(ticker.PriceChangePercent*0.35+avg*2.5, -20, 20)
 		action := "HOLD_WATCH"
 		if risk >= 0.75 { action = "AVOID_WATCH" } else if prob >= cfg.MinimumProbability && expected > 0 { action = "BUY_WATCH" } else if prob < 0.45 || expected < -1.5 { action = "SELL_WATCH" }
-		items = append(items, domain.Signal{Symbol: ticker.Symbol, Action: action, Probability: round(prob), ExpectedMovePercent: round(expected), RiskScore: round(risk), Confidence: round(Clamp(0.4+ticker.VolumeRankScore*0.3+float64(len(news))*0.08, 0, 0.95)), GeneratedAt: time.Now().UTC(), Reasons: []string{fmt.Sprintf("24h price change: %.2f%%", ticker.PriceChangePercent), fmt.Sprintf("volume rank score: %.2f", ticker.VolumeRankScore), fmt.Sprintf("average related news sentiment: %.2f", avg), fmt.Sprintf("risk score: %.2f", risk)}, Market: ticker, News: news})
+		items = append(items, domain.Signal{Symbol: ticker.Symbol, Action: action, Probability: round(prob), ExpectedMovePercent: round(expected), RiskScore: round(risk), Confidence: round(Clamp(0.4+ticker.VolumeRankScore*0.3+float64(len(news))*0.08, 0, 0.95)), GeneratedAt: time.Now().UTC(), Reasons: []string{fmt.Sprintf("Изменение цены за 24 часа: %.2f%%", ticker.PriceChangePercent), fmt.Sprintf("Сила объёма относительно других монет: %.2f", ticker.VolumeRankScore), fmt.Sprintf("Средний фон связанных новостей: %.2f", avg), fmt.Sprintf("Оценка риска по волатильности: %.2f", risk)}, Market: ticker, News: news})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Probability > items[j].Probability })
 	if len(items) > limit { return items[:limit] }
