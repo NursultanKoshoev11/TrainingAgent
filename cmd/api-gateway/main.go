@@ -29,6 +29,8 @@ func main() {
 	mux.HandleFunc("/v1/status", platform.Method(http.MethodGet, requireAuth(statusHandler)))
 	mux.HandleFunc("/v1/signals", platform.Method(http.MethodGet, requireAuth(proxySignals)))
 	mux.HandleFunc("/v1/signals/history", platform.Method(http.MethodGet, requireAuth(proxyHistory)))
+	mux.HandleFunc("/v1/evaluations", platform.Method(http.MethodGet, requireAuth(proxyEvaluations)))
+	mux.HandleFunc("/v1/evaluations/run", platform.Method(http.MethodPost, requireAuth(proxyEvaluationRun)))
 	mux.HandleFunc("/v1/candles", platform.Method(http.MethodGet, requireAuth(proxyCandles)))
 	mux.HandleFunc("/", platform.Method(http.MethodGet, requireAuth(dashboard)))
 	_ = platform.StartServer("api-gateway", port, mux)
@@ -59,23 +61,33 @@ func proxySignals(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(body)
 		return
 	}
-	proxyWithCache(w, r, platform.GetEnv("ENGINE_SERVICE_URL", "http://localhost:8083"), "/v1/signals", true, cacheKey)
+	proxyWithCache(w, r, http.MethodGet, platform.GetEnv("ENGINE_SERVICE_URL", "http://localhost:8083"), "/v1/signals", true, cacheKey)
 }
 
 func proxyHistory(w http.ResponseWriter, r *http.Request) {
-	proxyWithCache(w, r, platform.GetEnv("ENGINE_SERVICE_URL", "http://localhost:8083"), "/v1/signals/history", false, "")
+	proxyWithCache(w, r, http.MethodGet, platform.GetEnv("ENGINE_SERVICE_URL", "http://localhost:8083"), "/v1/signals/history", false, "")
+}
+
+func proxyEvaluations(w http.ResponseWriter, r *http.Request) {
+	proxyWithCache(w, r, http.MethodGet, platform.GetEnv("EVALUATOR_SERVICE_URL", "http://localhost:8084"), "/v1/evaluations", false, "")
+}
+
+func proxyEvaluationRun(w http.ResponseWriter, r *http.Request) {
+	proxyWithCache(w, r, http.MethodPost, platform.GetEnv("EVALUATOR_SERVICE_URL", "http://localhost:8084"), "/v1/evaluations/run", false, "")
 }
 
 func proxyCandles(w http.ResponseWriter, r *http.Request) {
-	proxyWithCache(w, r, platform.GetEnv("MARKET_SERVICE_URL", "http://localhost:8082"), "/v1/candles", false, "")
+	proxyWithCache(w, r, http.MethodGet, platform.GetEnv("MARKET_SERVICE_URL", "http://localhost:8082"), "/v1/candles", false, "")
 }
 
-func proxyWithCache(w http.ResponseWriter, r *http.Request, baseURL, path string, cache bool, cacheKey string) {
+func proxyWithCache(w http.ResponseWriter, r *http.Request, method, baseURL, path string, cache bool, cacheKey string) {
 	base := strings.TrimRight(baseURL, "/")
 	upstream := base + path
 	if r.URL.RawQuery != "" { upstream += "?" + r.URL.RawQuery }
 	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Get(upstream)
+	req, err := http.NewRequestWithContext(r.Context(), method, upstream, nil)
+	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
+	resp, err := client.Do(req)
 	if err != nil { platform.Fail(w, http.StatusBadGateway, err.Error()); return }
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4_000_000))
@@ -91,11 +103,13 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	engineOK := ping(client, platform.GetEnv("ENGINE_SERVICE_URL", "http://localhost:8083"))
 	marketOK := ping(client, platform.GetEnv("MARKET_SERVICE_URL", "http://localhost:8082"))
+	evaluatorOK := ping(client, platform.GetEnv("EVALUATOR_SERVICE_URL", "http://localhost:8084"))
 	platform.JSON(w, http.StatusOK, map[string]any{
 		"service": "api-gateway",
 		"status": "ok",
 		"engine_ok": engineOK,
 		"market_ok": marketOK,
+		"evaluator_ok": evaluatorOK,
 		"auth_enabled": platform.GetEnv("DASHBOARD_USER", "") != "" && platform.GetEnv("DASHBOARD_PASSWORD", "") != "",
 		"cache_seconds": platform.GetEnvInt("SIGNAL_CACHE_SECONDS", 60),
 		"time": time.Now().UTC().Format(time.RFC3339),
